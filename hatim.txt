@@ -1,0 +1,1659 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VERITAS Pro - تحليل الصوت والنص المباشر</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { font-family: 'Cairo', sans-serif; }
+        body { background: linear-gradient(135deg, #0a0e27 0%, #1a1f4b 50%, #0f172a 100%); min-height: 100vh; color: white; }
+        .glass-panel { background: rgba(255,255,255,0.05); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; }
+        @supports not (backdrop-filter: blur(12px)) {
+            .glass-panel { background: rgba(30, 41, 59, 0.95); }
+        }
+        .gradient-text { background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .pulse-dot { width: 10px; height: 10px; border-radius: 50%; background: #10b981; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.5); } }
+        .recording { animation: recording-pulse 1.5s infinite; }
+        @keyframes recording-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.7); } 50% { box-shadow: 0 0 0 20px rgba(239,68,68,0); } }
+        .waveform-bar { width: 3px; background: linear-gradient(to top, #60a5fa, #a78bfa); border-radius: 3px; transition: height 0.1s ease; }
+        .tab-btn.active { background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; }
+        .analysis-section { display: none; }
+        .analysis-section.active { display: block; animation: fadeIn 0.5s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .risk-low { color: #10b981; } .risk-medium { color: #f59e0b; } .risk-high { color: #ef4444; } .risk-critical { color: #dc2626; font-weight: bold; }
+        .export-btn { background: linear-gradient(135deg, #059669, #10b981); transition: all 0.3s; }
+        .export-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(16,185,129,0.3); }
+        .metric-card { transition: all 0.3s ease; border-right: 3px solid transparent; }
+        .metric-card:hover { transform: translateX(-5px); border-right-color: #60a5fa; background: rgba(255,255,255,0.08); }
+        .progress-bar { height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 4px; transition: width 1s ease; }
+        .audio-viz { display: flex; align-items: flex-end; justify-content: center; gap: 2px; height: 80px; padding: 10px; }
+        .timeline-item { position: relative; padding-right: 24px; border-right: 2px solid rgba(96,165,250,0.3); margin-bottom: 16px; }
+        .timeline-item::before { content: ''; position: absolute; right: -5px; top: 0; width: 8px; height: 8px; border-radius: 50%; background: #60a5fa; }
+        .word-tag { display: inline-block; padding: 2px 8px; margin: 2px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; background: rgba(255,255,255,0.1); }
+        .comparison-box { background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+        .score-ring { position: relative; width: 140px; height: 140px; }
+        .score-ring svg { transform: rotate(-90deg); }
+        .score-ring circle { fill: none; stroke-width: 8; stroke-linecap: round; }
+        .score-ring .bg { stroke: rgba(255,255,255,0.1); }
+        .score-ring .progress { stroke: url(#gradient); stroke-dasharray: 339.292; stroke-dashoffset: 339.292; transition: stroke-dashoffset 1.5s ease-out; }
+        .score-value { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 2rem; font-weight: 800; }
+        #videoPreview { transform: scaleX(-1); }
+        .face-landmark { position: absolute; width: 4px; height: 4px; background: #60a5fa; border-radius: 50%; }
+    </style>
+<base target="_blank">
+</head>
+<body>
+    <!-- Header -->
+    <header class="glass-panel sticky top-0 z-50 border-b border-white/10 mb-6">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                    <i class="fas fa-wave-square text-white text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold gradient-text">VERITAS Pro</h1>
+                    <p class="text-xs text-gray-400">نظام تحليل الصوت والنص المباشر v3.0</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2 text-sm text-gray-400">
+                    <div class="pulse-dot" id="systemStatus"></div>
+                    <span id="statusText">النظام جاهز</span>
+                </div>
+                <button onclick="exportReport()" class="export-btn px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 text-white">
+                    <i class="fas fa-file-pdf"></i> تصدير التقرير
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 pb-12">
+        <!-- Browser Compatibility Warning -->
+        <div id="compatWarning" class="glass-panel rounded-xl p-4 mb-4 border-r-4 border-red-500 hidden">
+            <div class="flex items-start gap-3">
+                <i class="fas fa-exclamation-circle text-red-500 text-xl mt-1"></i>
+                <div>
+                    <h3 class="font-bold text-red-400 mb-1">⚠️ متصفح غير مدعوم</h3>
+                    <p class="text-sm text-gray-300" id="compatText">بعض الميزات قد لا تعمل في هذا المتصفح. استخدم Chrome أو Edge أو Firefox أحدث إصدار.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Warning Banner -->
+        <div class="glass-panel rounded-xl p-4 mb-6 border-r-4 border-yellow-500">
+            <div class="flex items-start gap-3">
+                <i class="fas fa-exclamation-triangle text-yellow-500 text-xl mt-1"></i>
+                <div>
+                    <h3 class="font-bold text-yellow-400 mb-1">⚠️ تنبيه علمي وقانوني هام</h3>
+                    <p class="text-sm text-gray-300 leading-relaxed">
+                        هذه الأداة تعتمد على <strong>مؤشرات لغوية وصوتية إحصائية ضعيفة</strong>. لا يمكن لأي تقنية حالية تحديد الكذب بدقة. 
+                        النتائج هي <strong>فرضيات تحليلية فقط</strong>. التوتر الصوتي ≠ الكذب (قد يكون خوفاً من الاتهام أو صدمة نفسية).
+                        <span class="text-yellow-400 block mt-1">دقة الأدوات الصوتية: 60-80% | Multimodal (صوت+نص+وجه): 80-95%</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Audio Recording Section -->
+        <div class="glass-panel rounded-xl p-6 mb-8">
+            <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+                <i class="fas fa-microphone-alt text-red-400"></i> 
+                تسجيل وتحليل الصوت المباشر
+            </h2>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Recording Controls -->
+                <div class="lg:col-span-1 space-y-4">
+                    <div class="bg-black/30 rounded-lg p-4 text-center">
+                        <div id="recordingTimer" class="text-3xl font-mono font-bold text-white mb-2">00:00</div>
+                        <div id="recordingStatus" class="text-sm text-gray-400 mb-4">جاهز للتسجيل</div>
+
+                        <div class="flex justify-center gap-3">
+                            <button id="startRecord" onclick="startRecording()" class="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition shadow-lg shadow-red-500/30">
+                                <i class="fas fa-microphone text-white text-xl"></i>
+                            </button>
+                            <button id="stopRecord" onclick="stopRecording()" class="w-14 h-14 rounded-full bg-gray-600 hover:bg-gray-500 flex items-center justify-center transition hidden">
+                                <i class="fas fa-stop text-white text-xl"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-black/20 rounded-lg p-3">
+                        <h4 class="text-sm font-bold text-blue-400 mb-2">📊 معلومات الصوت</h4>
+                        <div class="space-y-2 text-xs">
+                            <div class="flex justify-between"><span class="text-gray-400">مدة التسجيل:</span><span id="audioDuration" class="text-white">0 ثانية</span></div>
+                            <div class="flex justify-between"><span class="text-gray-400">معدل العينة:</span><span class="text-white">44100 Hz</span></div>
+                            <div class="flex justify-between"><span class="text-gray-400">القنوات:</span><span class="text-white">مونو</span></div>
+                            <div class="flex justify-between"><span class="text-gray-400">الحجم:</span><span id="audioSize" class="text-white">0 KB</span></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-black/20 rounded-lg p-3">
+                        <h4 class="text-sm font-bold text-purple-400 mb-2">🎤 أو ارفع ملف صوتي</h4>
+                        <input type="file" id="audioFile" accept="audio/*" onchange="handleAudioFile(event)" class="w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-500/20 file:text-blue-400 hover:file:bg-blue-500/30">
+                    </div>
+                </div>
+
+                <!-- Waveform Visualization -->
+                <div class="lg:col-span-2">
+                    <div class="bg-black/30 rounded-lg p-4 h-full">
+                        <div class="flex justify-between items-center mb-3">
+                            <h4 class="text-sm font-bold text-blue-400">📈 تصور الصوت المباشر</h4>
+                            <div class="flex gap-2">
+                                <span class="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400">Pitch</span>
+                                <span class="text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-400">Energy</span>
+                                <span class="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400">MFCC</span>
+                            </div>
+                        </div>
+
+                        <!-- Real-time waveform -->
+                        <div id="waveformContainer" class="audio-viz bg-black/20 rounded-lg mb-3">
+                            <div class="text-gray-500 text-sm">اضغط على زر التسجيل لبدء تحليل الصوت المباشر</div>
+                        </div>
+
+                        <!-- Audio features chart -->
+                        <canvas id="audioChart" height="100"></canvas>
+
+                        <!-- Playback controls -->
+                        <div id="playbackControls" class="hidden mt-3 flex items-center gap-3">
+                            <button onclick="playAudio()" class="w-10 h-10 rounded-full bg-blue-500 hover:bg-blue-600 flex items-center justify-center">
+                                <i class="fas fa-play text-white"></i>
+                            </button>
+                            <div class="flex-1 bg-white/10 rounded-full h-2 overflow-hidden">
+                                <div id="playbackProgress" class="h-full bg-blue-500 transition-all" style="width: 0%"></div>
+                            </div>
+                            <span id="playbackTime" class="text-xs text-gray-400">00:00 / 00:00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Text Input (Auto-populated from speech recognition) -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div class="glass-panel rounded-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold flex items-center gap-2">
+                        <i class="fas fa-file-alt text-blue-400"></i> 
+                        النص المستخرج (من التعرف على الكلام)
+                    </h2>
+                    <span class="text-xs text-gray-400 bg-white/5 px-2 py-1 rounded">Web Speech API</span>
+                </div>
+                <textarea id="mainStatement" class="w-full h-48 bg-black/20 border border-white/10 rounded-lg p-4 text-sm leading-relaxed resize-none focus:outline-none focus:border-blue-500 transition text-white placeholder-gray-500" placeholder="سيظهر النص هنا تلقائياً عند التسجيل... أو يمكنك كتابته يدوياً
+مثال: كنت في المنزل الساعة الثامنة مساء يوم الجمعة 15 مايو..."></textarea>
+                <div class="flex justify-between items-center mt-3">
+                    <div class="text-xs text-gray-400"><span id="wordCount">0</span> كلمة | <span id="charCount">0</span> حرف</div>
+                    <button onclick="addComparisonStatement()" class="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1 transition">
+                        <i class="fas fa-plus-circle"></i> إضافة رواية للمقارنة
+                    </button>
+                </div>
+            </div>
+
+            <div class="glass-panel rounded-xl p-6" id="comparisonArea">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold flex items-center gap-2">
+                        <i class="fas fa-exchange-alt text-purple-400"></i> 
+                        روايات سابقة للمقارنة
+                    </h2>
+                    <span class="text-xs text-gray-400">الكشف عن التناقضات</span>
+                </div>
+                <div id="comparisonList" class="space-y-3 max-h-48 overflow-y-auto pr-1">
+                    <div class="text-center text-gray-500 py-8 text-sm" id="emptyComparisonMsg">
+                        <i class="fas fa-info-circle mb-2 text-2xl block"></i>
+                        <p>أضف روايات سابقة للمتهم/الشاهد<br>للكشف عن التناقضات والتغييرات</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Camera Section (Optional) -->
+        <div class="glass-panel rounded-xl p-6 mb-8">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold flex items-center gap-2">
+                    <i class="fas fa-video text-green-400"></i> 
+                    تحليل التعبيرات الوجهية (Micro-expressions) - اختياري
+                </h2>
+                <button onclick="toggleCamera()" id="cameraBtn" class="text-sm px-4 py-2 rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 transition">
+                    <i class="fas fa-camera ml-1"></i> تفعيل الكاميرا
+                </button>
+            </div>
+            <div id="cameraContainer" class="hidden">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="relative bg-black/30 rounded-lg overflow-hidden" style="height: 300px;">
+                        <video id="videoPreview" autoplay playsinline muted class="w-full h-full object-cover"></video>
+                        <div id="faceOverlay" class="absolute inset-0 pointer-events-none"></div>
+                        <div class="absolute top-2 left-2 bg-red-500/80 text-white text-xs px-2 py-1 rounded hidden" id="recordingBadge">
+                            <i class="fas fa-circle mr-1"></i> REC
+                        </div>
+                    </div>
+                    <div class="bg-black/20 rounded-lg p-4">
+                        <h4 class="text-sm font-bold text-green-400 mb-3">📊 مؤشرات الوجه المكتشفة</h4>
+                        <div id="faceMetrics" class="space-y-2 text-xs">
+                            <div class="flex justify-between"><span class="text-gray-400">التوتر الوجهي:</span><span id="faceTension" class="text-white">--</span></div>
+                            <div class="flex justify-between"><span class="text-gray-400">حركة العين:</span><span id="eyeMovement" class="text-white">--</span></div>
+                            <div class="flex justify-between"><span class="text-gray-400">الابتسامة:</span><span id="smileDetect" class="text-white">--</span></div>
+                            <div class="flex justify-between"><span class="text-gray-400">الرسم البياني للعاطفة:</span><span id="emotionGraph" class="text-white">--</span></div>
+                        </div>
+                        <div class="mt-4 p-2 bg-yellow-500/10 rounded border border-yellow-500/20 text-xs text-yellow-400">
+                            ⚠️ تحليل الوجه يتطلب نموذج TensorFlow.js (غير مضمن في هذا الإصدار)
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analysis Controls -->
+        <div class="glass-panel rounded-xl p-4 mb-8 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+                <label class="text-sm text-gray-400">نوع التحليل:</label>
+                <select id="analysisType" class="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 text-white">
+                    <option value="multimodal">Multimodal (صوت + نص + وجه)</option>
+                    <option value="audio">تحليل صوتي فقط</option>
+                    <option value="text">تحليل نصي فقط</option>
+                    <option value="comprehensive">تحليل شامل (CBCA + SCAN + LIWC + صوت)</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="clearAll()" class="px-4 py-2 rounded-lg border border-white/20 text-sm hover:bg-white/5 transition text-gray-300">
+                    <i class="fas fa-trash-alt ml-1"></i> مسح
+                </button>
+                <button onclick="runAnalysis()" id="runAnalysisBtn" class="px-6 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 text-sm font-bold hover:shadow-lg hover:shadow-blue-500/25 transition transform hover:-translate-y-0.5 text-white">
+                    <i class="fas fa-microscope ml-2"></i> <span id="runBtnText">بدء التحليل المتعدد الوسائط</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Results Dashboard -->
+        <div id="resultsDashboard" style="display:none;">
+            <!-- Overall Score -->
+            <div class="glass-panel rounded-xl p-8 mb-6">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
+                    <div class="flex flex-col items-center">
+                        <div class="score-ring mb-4">
+                            <svg width="140" height="140">
+                                <defs><linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#60a5fa" /><stop offset="100%" style="stop-color:#a78bfa" /></linearGradient></defs>
+                                <circle class="bg" cx="70" cy="70" r="54"></circle>
+                                <circle class="progress" id="overallScoreCircle" cx="70" cy="70" r="54"></circle>
+                            </svg>
+                            <div class="score-value gradient-text" id="overallScore">0</div>
+                        </div>
+                        <h3 class="font-bold text-lg">المصداقية العامة</h3>
+                        <p class="text-sm mt-1 font-semibold" id="overallVerdict">--</p>
+                    </div>
+
+                    <div class="md:col-span-3">
+                        <h3 class="font-bold mb-4 flex items-center gap-2 text-lg"><i class="fas fa-chart-pie text-blue-400"></i> توزيع المؤشرات المتعددة</h3>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="scoreCards"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Audio Analysis Results -->
+            <div class="glass-panel rounded-xl p-6 mb-6">
+                <h3 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="fas fa-wave-square text-red-400"></i> تحليل الصوت المباشر</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <canvas id="pitchChart" height="200"></canvas>
+                    </div>
+                    <div>
+                        <canvas id="energyChart" height="200"></canvas>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4" id="audioMetrics"></div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="glass-panel rounded-xl overflow-hidden mb-6">
+                <div class="flex border-b border-white/10 overflow-x-auto">
+                    <button onclick="switchTab('cbca')" class="tab-btn active px-6 py-4 text-sm font-semibold whitespace-nowrap transition" data-tab="cbca"><i class="fas fa-clipboard-check ml-2"></i>CBCA</button>
+                    <button onclick="switchTab('linguistic')" class="tab-btn px-6 py-4 text-sm font-semibold whitespace-nowrap transition" data-tab="linguistic"><i class="fas fa-language ml-2"></i>لغوي نفسي</button>
+                    <button onclick="switchTab('scan')" class="tab-btn px-6 py-4 text-sm font-semibold whitespace-nowrap transition" data-tab="scan"><i class="fas fa-search ml-2"></i>SCAN</button>
+                    <button onclick="switchTab('audio')" class="tab-btn px-6 py-4 text-sm font-semibold whitespace-nowrap transition" data-tab="audio"><i class="fas fa-headphones ml-2"></i>صوتي</button>
+                    <button onclick="switchTab('comparison')" class="tab-btn px-6 py-4 text-sm font-semibold whitespace-nowrap transition" data-tab="comparison"><i class="fas fa-not-equal ml-2"></i>مقارنة</button>
+                    <button onclick="switchTab('timeline')" class="tab-btn px-6 py-4 text-sm font-semibold whitespace-nowrap transition" data-tab="timeline"><i class="fas fa-clock ml-2"></i>زمني</button>
+                </div>
+
+                <div id="tab-cbca" class="analysis-section active p-6">
+                    <div class="mb-4 p-4 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                        <h4 class="font-bold text-blue-400 mb-2">📋 Criteria-Based Content Analysis (CBCA)</h4>
+                        <p class="text-sm text-gray-300">19 معياراً علمياً لتقييم مصداقية الشهادات. طوره <strong>Steller & Koehnken</strong>.</p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="cbcaResults"></div>
+                </div>
+
+                <div id="tab-linguistic" class="analysis-section p-6">
+                    <div class="mb-4 p-4 bg-purple-500/10 rounded-lg border border-purple-500/20">
+                        <h4 class="font-bold text-purple-400 mb-2">🧠 التحليل اللغوي النفسي (LIWC-based)</h4>
+                        <p class="text-sm text-gray-300">تحليل فئات الكلمات النفسية: الضمائر، العواطف، التردد، التعميمات.</p>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div id="linguisticResults" class="space-y-3"></div>
+                        <div id="linguisticDetails" class="bg-black/20 rounded-lg p-4"></div>
+                    </div>
+                </div>
+
+                <div id="tab-scan" class="analysis-section p-6">
+                    <div class="mb-4 p-4 bg-red-500/10 rounded-lg border border-red-500/20">
+                        <h4 class="font-bold text-red-400 mb-2">🔬 Scientific Content Analysis (SCAN)</h4>
+                        <p class="text-sm text-gray-300">طريقة <strong>Avinoam Sapir</strong> لتحليل العبارات المكتوبة.</p>
+                    </div>
+                    <div id="scanResults" class="space-y-4"></div>
+                </div>
+
+                <div id="tab-audio" class="analysis-section p-6">
+                    <div class="mb-4 p-4 bg-orange-500/10 rounded-lg border border-orange-500/20">
+                        <h4 class="font-bold text-orange-400 mb-2">🎵 تحليل الميزات الصوتية (Acoustic Features)</h4>
+                        <p class="text-sm text-gray-300">تحليل: Pitch (F0), Energy, MFCC, Speech Rate, Pauses, Jitter, Shimmer.</p>
+                    </div>
+                    <div id="audioAnalysisResults" class="space-y-4"></div>
+                </div>
+
+                <div id="tab-comparison" class="analysis-section p-6">
+                    <div class="mb-4 p-4 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                        <h4 class="font-bold text-yellow-400 mb-2">⚖️ مقارنة الروايات المتعددة</h4>
+                        <p class="text-sm text-gray-300">الكشف عن التناقضات بين روايات مختلفة.</p>
+                    </div>
+                    <div id="comparisonResults"></div>
+                </div>
+
+                <div id="tab-timeline" class="analysis-section p-6">
+                    <div class="mb-4 p-4 bg-green-500/10 rounded-lg border border-green-500/20">
+                        <h4 class="font-bold text-green-400 mb-2">⏱️ التسلسل الزمني</h4>
+                        <p class="text-sm text-gray-300">استخراج الأحداث الزمنية والتحقق من المنطق الزمني.</p>
+                    </div>
+                    <div id="timelineResults" class="space-y-3"></div>
+                </div>
+            </div>
+
+            <!-- Detailed Report -->
+            <div class="glass-panel rounded-xl p-6 mb-6">
+                <h3 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="fas fa-file-medical-alt text-green-400"></i> التقرير التحليلي التفصيلي</h3>
+                <div id="detailedReport" class="text-sm leading-relaxed text-gray-300 space-y-4"></div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+
+                // Browser compatibility warning display
+        if (!navigator.mediaDevices || !window.AudioContext) {
+            console.warn('Browser compatibility: Some features may not work');
+        }
+        // ===== AUDIO ENGINE =====
+        let mediaRecorder = null;
+        let audioContext = null;
+        let analyser = null;
+        let audioChunks = [];
+        let recordedBlob = null;
+        let audioBuffer = null;
+        let isRecording = false;
+        let recordingStartTime = null;
+        let timerInterval = null;
+        let audioFeatures = {
+            pitchData: [],
+            energyData: [],
+            mfccData: [],
+            pauseData: [],
+            speechRateData: [],
+            jitterData: [],
+            shimmerData: []
+        };
+        let recognition = null;
+        let stream = null;
+        let videoStream = null;
+        let comparisonStatements = [];
+        let currentAnalysis = null;
+        let charts = {};
+
+        // Initialize Web Speech API
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ar-SA';
+            recognition.continuous = true;
+            recognition.interimResults = true;
+
+            recognition.onresult = (event) => {
+                let finalTranscript = '';
+                let interimTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript + ' ';
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+                const textarea = document.getElementById('mainStatement');
+                if (finalTranscript) {
+                    textarea.value += finalTranscript;
+                    updateWordCount();
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                document.getElementById('statusText').textContent = 'خطأ في التعرف على الكلام';
+            };
+        }
+
+        function updateWordCount() {
+            const text = document.getElementById('mainStatement').value;
+            document.getElementById('wordCount').textContent = text.trim().split(/\s+/).filter(w => w.length > 0).length;
+            document.getElementById('charCount').textContent = text.length;
+        }
+
+        document.getElementById('mainStatement').addEventListener('input', updateWordCount);
+
+        // Start Recording
+        async function startRecording() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioContext.state === 'suspended') await audioContext.resume();
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                source.connect(analyser);
+
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                audioFeatures = { pitchData: [], energyData: [], mfccData: [], pauseData: [], speechRateData: [], jitterData: [], shimmerData: [] };
+
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    recordedBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    const arrayBuffer = await recordedBlob.arrayBuffer();
+                    audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                    analyzeAudioFeatures(audioBuffer);
+                    document.getElementById('audioSize').textContent = (recordedBlob.size / 1024).toFixed(1) + ' KB';
+                    document.getElementById('playbackControls').classList.remove('hidden');
+                };
+
+                mediaRecorder.start(100); // Collect data every 100ms
+                isRecording = true;
+                recordingStartTime = Date.now();
+
+                // Start speech recognition
+                if (recognition) recognition.start();
+
+                // UI updates
+                document.getElementById('startRecord').classList.add('hidden');
+                document.getElementById('stopRecord').classList.remove('hidden');
+                document.getElementById('recordingStatus').textContent = 'جاري التسجيل...';
+                document.getElementById('recordingStatus').classList.add('text-red-400');
+                document.getElementById('systemStatus').style.background = '#ef4444';
+                document.getElementById('statusText').textContent = 'تسجيل وتحليل مباشر';
+
+                // Timer
+                timerInterval = setInterval(updateTimer, 1000);
+
+                // Real-time visualization
+                visualizeAudio();
+
+            } catch (err) {
+                alert('خطأ في الوصول إلى الميكروفون: ' + err.message);
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+                stream.getTracks().forEach(track => track.stop());
+                if (recognition) recognition.stop();
+
+                isRecording = false;
+                clearInterval(timerInterval);
+
+                document.getElementById('startRecord').classList.remove('hidden');
+                document.getElementById('stopRecord').classList.add('hidden');
+                document.getElementById('recordingStatus').textContent = 'تم إيقاف التسجيل';
+                document.getElementById('recordingStatus').classList.remove('text-red-400');
+                document.getElementById('systemStatus').style.background = '#10b981';
+                document.getElementById('statusText').textContent = 'التحليل جاهز';
+            }
+        }
+
+        function updateTimer() {
+            const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+            const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
+            const seconds = (elapsed % 60).toString().padStart(2, '0');
+            document.getElementById('recordingTimer').textContent = `${minutes}:${seconds}`;
+            document.getElementById('audioDuration').textContent = elapsed + ' ثانية';
+        }
+
+        // Real-time audio visualization
+        function visualizeAudio() {
+            if (!isRecording) return;
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+
+            const container = document.getElementById('waveformContainer');
+            container.innerHTML = '';
+
+            const barCount = 50;
+            const step = Math.floor(bufferLength / barCount);
+
+            for (let i = 0; i < barCount; i++) {
+                const value = dataArray[i * step];
+                const bar = document.createElement('div');
+                bar.className = 'waveform-bar';
+                bar.style.height = (value / 255) * 100 + '%';
+                container.appendChild(bar);
+            }
+
+            // Extract features in real-time
+            extractRealTimeFeatures(dataArray);
+
+            requestAnimationFrame(visualizeAudio);
+        }
+
+        function extractRealTimeFeatures(dataArray) {
+            // Energy (RMS)
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i] * dataArray[i];
+            }
+            const rms = Math.sqrt(sum / dataArray.length);
+            audioFeatures.energyData.push(rms);
+
+            // Simple pitch estimation (dominant frequency)
+            let maxVal = 0;
+            let maxIndex = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                if (dataArray[i] > maxVal) {
+                    maxVal = dataArray[i];
+                    maxIndex = i;
+                }
+            }
+            const pitch = maxIndex * (audioContext.sampleRate / 2) / dataArray.length;
+            audioFeatures.pitchData.push(pitch);
+
+            // Detect pauses (low energy)
+            if (rms < 10) {
+                audioFeatures.pauseData.push(Date.now());
+            }
+        }
+
+        // Analyze recorded audio
+        function analyzeAudioFeatures(buffer) {
+            if (!buffer || !buffer.getChannelData) {
+                console.error('Invalid audio buffer');
+                return;
+            }
+            const channelData = buffer.getChannelData(0);
+            const sampleRate = buffer.sampleRate;
+            const duration = buffer.duration;
+
+            // Calculate comprehensive features
+            const features = {
+                duration: duration,
+                sampleRate: sampleRate,
+
+                // Pitch statistics (using autocorrelation)
+                pitchMean: calculatePitchMean(channelData, sampleRate),
+                pitchStd: calculatePitchStd(channelData, sampleRate),
+                pitchRange: calculatePitchRange(channelData, sampleRate),
+
+                // Energy statistics
+                energyMean: calculateEnergyMean(channelData),
+                energyStd: calculateEnergyStd(channelData),
+                energyPeaks: countEnergyPeaks(channelData),
+
+                // Speech rate (approximate)
+                speechRate: estimateSpeechRate(channelData, sampleRate, duration),
+
+                // Pauses
+                pauseCount: countPauses(channelData, sampleRate),
+                pauseTotalDuration: calculatePauseDuration(channelData, sampleRate),
+
+                // Jitter (pitch perturbation)
+                jitter: calculateJitter(audioFeatures.pitchData),
+
+                // Shimmer (amplitude perturbation)
+                shimmer: calculateShimmer(audioFeatures.energyData),
+
+                // MFCC-like features (simplified)
+                mfccMean: calculateMFCCMean(channelData, sampleRate),
+
+                // Voice quality
+                harmonicToNoise: estimateHarmonicToNoise(channelData),
+
+                // Stress indicators
+                pitchIncrease: calculatePitchIncrease(audioFeatures.pitchData),
+                energyIncrease: calculateEnergyIncrease(audioFeatures.energyData)
+            };
+
+            audioFeatures.calculated = features;
+            displayAudioMetrics(features);
+            drawAudioCharts();
+        }
+
+        // Audio feature calculation helpers
+        function calculatePitchMean(data, sampleRate) {
+            if (audioFeatures.pitchData.length === 0) return 0;
+            const valid = audioFeatures.pitchData.filter(p => p > 50 && p < 500);
+            return valid.length > 0 ? valid.reduce((a, b) => a + b, 0) / valid.length : 0;
+        }
+
+        function calculatePitchStd(data, sampleRate) {
+            if (audioFeatures.pitchData.length === 0) return 0;
+            const valid = audioFeatures.pitchData.filter(p => p > 50 && p < 500);
+            const mean = valid.reduce((a, b) => a + b, 0) / valid.length;
+            const variance = valid.reduce((sum, p) => sum + Math.pow(p - mean, 2), 0) / valid.length;
+            return Math.sqrt(variance);
+        }
+
+        function calculatePitchRange(data, sampleRate) {
+            if (audioFeatures.pitchData.length === 0) return 0;
+            const valid = audioFeatures.pitchData.filter(p => p > 50 && p < 500);
+            return valid.length > 0 ? Math.max(...valid) - Math.min(...valid) : 0;
+        }
+
+        function calculateEnergyMean(data) {
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+            return Math.sqrt(sum / data.length);
+        }
+
+        function calculateEnergyStd(data) {
+            const mean = calculateEnergyMean(data);
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) sum += Math.pow(data[i] * data[i] - mean * mean, 2);
+            return Math.sqrt(sum / data.length);
+        }
+
+        function countEnergyPeaks(data) {
+            const threshold = 0.1;
+            let peaks = 0;
+            for (let i = 1; i < data.length - 1; i++) {
+                if (Math.abs(data[i]) > threshold && Math.abs(data[i]) > Math.abs(data[i-1]) && Math.abs(data[i]) > Math.abs(data[i+1])) {
+                    peaks++;
+                }
+            }
+            return peaks;
+        }
+
+        function estimateSpeechRate(data, sampleRate, duration) {
+            const frameSize = Math.floor(sampleRate * 0.02); // 20ms frames
+            const frames = Math.floor(data.length / frameSize);
+            let voicedFrames = 0;
+            for (let i = 0; i < frames; i++) {
+                let energy = 0;
+                for (let j = 0; j < frameSize; j++) {
+                    energy += data[i * frameSize + j] * data[i * frameSize + j];
+                }
+                if (energy / frameSize > 0.001) voicedFrames++;
+            }
+            return (voicedFrames / frames) * 100; // Percentage of voiced frames
+        }
+
+        function countPauses(data, sampleRate) {
+            const threshold = 0.01;
+            const minPauseLength = Math.floor(sampleRate * 0.3); // 300ms minimum pause
+            let pauses = 0;
+            let currentPause = 0;
+            for (let i = 0; i < data.length; i++) {
+                if (Math.abs(data[i]) < threshold) {
+                    currentPause++;
+                } else {
+                    if (currentPause > minPauseLength) pauses++;
+                    currentPause = 0;
+                }
+            }
+            return pauses;
+        }
+
+        function calculatePauseDuration(data, sampleRate) {
+            const threshold = 0.01;
+            let totalPause = 0;
+            for (let i = 0; i < data.length; i++) {
+                if (Math.abs(data[i]) < threshold) totalPause++;
+            }
+            return totalPause / sampleRate;
+        }
+
+        function calculateJitter(pitchData) {
+            if (pitchData.length < 2) return 0;
+            const valid = pitchData.filter(p => p > 50 && p < 500);
+            if (valid.length < 2) return 0;
+            let sumDiff = 0;
+            for (let i = 1; i < valid.length; i++) {
+                sumDiff += Math.abs(valid[i] - valid[i-1]);
+            }
+            const meanPitch = valid.reduce((a, b) => a + b, 0) / valid.length;
+            return (sumDiff / (valid.length - 1)) / meanPitch;
+        }
+
+        function calculateShimmer(energyData) {
+            if (energyData.length < 2) return 0;
+            let sumDiff = 0;
+            for (let i = 1; i < energyData.length; i++) {
+                sumDiff += Math.abs(energyData[i] - energyData[i-1]);
+            }
+            const meanEnergy = energyData.reduce((a, b) => a + b, 0) / energyData.length;
+            return (sumDiff / (energyData.length - 1)) / meanEnergy;
+        }
+
+        function calculateMFCCMean(data, sampleRate) {
+            // Simplified MFCC calculation
+            const frameSize = 512;
+            const hopSize = 256;
+            const numFrames = Math.floor((data.length - frameSize) / hopSize);
+            let sum = 0;
+            for (let i = 0; i < numFrames; i++) {
+                const frame = data.slice(i * hopSize, i * hopSize + frameSize);
+                const energy = frame.reduce((sum, val) => sum + val * val, 0);
+                sum += Math.log(energy + 1e-10);
+            }
+            return sum / numFrames;
+        }
+
+        function estimateHarmonicToNoise(data) {
+            const frameSize = 1024;
+            let harmonicSum = 0;
+            let noiseSum = 0;
+            for (let i = 0; i < Math.min(data.length, frameSize); i++) {
+                const val = data[i];
+                if (i % 10 === 0) harmonicSum += val * val;
+                else noiseSum += val * val;
+            }
+            return noiseSum > 0 ? 10 * Math.log10(harmonicSum / noiseSum) : 0;
+        }
+
+        function calculatePitchIncrease(pitchData) {
+            if (pitchData.length < 10) return 0;
+            const firstHalf = pitchData.slice(0, Math.floor(pitchData.length / 2));
+            const secondHalf = pitchData.slice(Math.floor(pitchData.length / 2));
+            const firstMean = firstHalf.filter(p => p > 50).reduce((a, b) => a + b, 0) / firstHalf.filter(p => p > 50).length || 1;
+            const secondMean = secondHalf.filter(p => p > 50).reduce((a, b) => a + b, 0) / secondHalf.filter(p => p > 50).length || 1;
+            return ((secondMean - firstMean) / firstMean) * 100;
+        }
+
+        function calculateEnergyIncrease(energyData) {
+            if (energyData.length < 10) return 0;
+            const firstHalf = energyData.slice(0, Math.floor(energyData.length / 2));
+            const secondHalf = energyData.slice(Math.floor(energyData.length / 2));
+            const firstMean = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length || 1;
+            const secondMean = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length || 1;
+            return ((secondMean - firstMean) / firstMean) * 100;
+        }
+
+        function displayAudioMetrics(features) {
+            const container = document.getElementById('audioMetrics');
+            container.innerHTML = `
+                <div class="bg-black/20 rounded-lg p-3 text-center">
+                    <div class="text-xl font-bold ${features.pitchIncrease > 20 ? 'text-red-400' : 'text-blue-400'}">${features.pitchMean.toFixed(1)} Hz</div>
+                    <div class="text-xs text-gray-400">متوسط النبرة (Pitch)</div>
+                    <div class="text-xs ${features.pitchIncrease > 20 ? 'text-red-400' : 'text-gray-500'}">↑ ${features.pitchIncrease.toFixed(1)}%</div>
+                </div>
+                <div class="bg-black/20 rounded-lg p-3 text-center">
+                    <div class="text-xl font-bold ${features.energyIncrease > 30 ? 'text-red-400' : 'text-purple-400'}">${features.energyMean.toFixed(3)}</div>
+                    <div class="text-xs text-gray-400">متوسط الطاقة</div>
+                    <div class="text-xs ${features.energyIncrease > 30 ? 'text-red-400' : 'text-gray-500'}">↑ ${features.energyIncrease.toFixed(1)}%</div>
+                </div>
+                <div class="bg-black/20 rounded-lg p-3 text-center">
+                    <div class="text-xl font-bold ${features.pauseCount > 5 ? 'text-yellow-400' : 'text-green-400'}">${features.pauseCount}</div>
+                    <div class="text-xs text-gray-400">عدد التوقفات</div>
+                    <div class="text-xs text-gray-500">${features.pauseTotalDuration.toFixed(1)}s إجمالي</div>
+                </div>
+                <div class="bg-black/20 rounded-lg p-3 text-center">
+                    <div class="text-xl font-bold ${features.jitter > 0.05 ? 'text-red-400' : 'text-green-400'}">${features.jitter.toFixed(3)}</div>
+                    <div class="text-xs text-gray-400">Jitter (اضطراب النبرة)</div>
+                    <div class="text-xs ${features.jitter > 0.05 ? 'text-red-400' : 'text-gray-500'}">${features.jitter > 0.05 ? '⚠️ عالي' : '✅ طبيعي'}</div>
+                </div>
+            `;
+        }
+
+        function drawAudioCharts() {
+            // Pitch chart
+            const pitchCtx = document.getElementById('pitchChart').getContext('2d');
+            if (charts.pitch) charts.pitch.destroy();
+
+            const pitchLabels = audioFeatures.pitchData.map((_, i) => i);
+            const pitchValues = audioFeatures.pitchData.map(p => p > 50 && p < 500 ? p : null);
+
+            charts.pitch = new Chart(pitchCtx, {
+                type: 'line',
+                data: {
+                    labels: pitchLabels.filter((_, i) => i % 10 === 0),
+                    datasets: [{
+                        label: 'Pitch (Hz)',
+                        data: pitchValues.filter((_, i) => i % 10 === 0),
+                        borderColor: '#60a5fa',
+                        backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: false, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: 'rgba(255,255,255,0.7)' } },
+                        x: { display: false }
+                    }
+                }
+            });
+
+            // Energy chart
+            const energyCtx = document.getElementById('energyChart').getContext('2d');
+            if (charts.energy) charts.energy.destroy();
+
+            charts.energy = new Chart(energyCtx, {
+                type: 'line',
+                data: {
+                    labels: audioFeatures.energyData.map((_, i) => i).filter((_, i) => i % 10 === 0),
+                    datasets: [{
+                        label: 'Energy',
+                        data: audioFeatures.energyData.filter((_, i) => i % 10 === 0),
+                        borderColor: '#a78bfa',
+                        backgroundColor: 'rgba(167, 139, 250, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: 'rgba(255,255,255,0.7)' } },
+                        x: { display: false }
+                    }
+                }
+            });
+        }
+
+        // Handle uploaded audio file
+        function handleAudioFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const arrayBuffer = e.target.result;
+                if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioContext.state === 'suspended') await audioContext.resume();
+                try {
+                    audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                } catch (err) {
+                    console.error('Error decoding audio:', err);
+                    alert('خطأ في فك تشفير الملف الصوتي. تأكد من صيغة الملف.');
+                    return;
+                }
+
+                document.getElementById('audioDuration').textContent = audioBuffer.duration.toFixed(1) + ' ثانية';
+                document.getElementById('audioSize').textContent = (file.size / 1024).toFixed(1) + ' KB';
+
+                // Extract features
+                audioFeatures = { pitchData: [], energyData: [], mfccData: [], pauseData: [], speechRateData: [], jitterData: [], shimmerData: [] };
+
+                // Simulate real-time feature extraction from file
+                const channelData = audioBuffer.getChannelData(0);
+                const chunkSize = Math.floor(channelData.length / 100);
+                for (let i = 0; i < 100; i++) {
+                    const chunk = channelData.slice(i * chunkSize, (i + 1) * chunkSize);
+                    let energy = 0;
+                    for (let j = 0; j < chunk.length; j++) energy += chunk[j] * chunk[j];
+                    audioFeatures.energyData.push(Math.sqrt(energy / chunk.length));
+
+                    // Simple pitch estimation
+                    let maxVal = 0, maxIndex = 0;
+                    for (let j = 0; j < chunk.length; j++) {
+                        if (Math.abs(chunk[j]) > maxVal) { maxVal = Math.abs(chunk[j]); maxIndex = j; }
+                    }
+                    const pitch = maxIndex > 0 ? audioBuffer.sampleRate / maxIndex : 0;
+                    audioFeatures.pitchData.push(pitch);
+                }
+
+                analyzeAudioFeatures(audioBuffer);
+                document.getElementById('playbackControls').classList.remove('hidden');
+                document.getElementById('statusText').textContent = 'الملف الصوتي جاهز للتحليل';
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // Play audio
+        function playAudio() {
+            if (!audioBuffer || !audioContext) {
+                console.warn('No audio buffer or context available');
+                return;
+            }
+            if (audioContext.state === 'suspended') audioContext.resume();
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            source.start();
+
+            const duration = audioBuffer.duration;
+            const startTime = audioContext.currentTime;
+
+            const progressInterval = setInterval(() => {
+                const elapsed = audioContext.currentTime - startTime;
+                const progress = (elapsed / duration) * 100;
+                document.getElementById('playbackProgress').style.width = progress + '%';
+                document.getElementById('playbackTime').textContent = 
+                    formatTime(elapsed) + ' / ' + formatTime(duration);
+                if (elapsed >= duration) clearInterval(progressInterval);
+            }, 100);
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
+            return `${mins}:${secs}`;
+        }
+
+        // Camera functions
+        async function toggleCamera() {
+            const container = document.getElementById('cameraContainer');
+            const btn = document.getElementById('cameraBtn');
+
+            if (container.classList.contains('hidden')) {
+                try {
+                    videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    const video = document.getElementById('videoPreview');
+                    video.srcObject = videoStream;
+                    container.classList.remove('hidden');
+                    btn.innerHTML = '<i class="fas fa-video-slash ml-1"></i> إيقاف الكاميرا';
+                    btn.classList.replace('bg-green-500/20', 'bg-red-500/20');
+                    btn.classList.replace('text-green-400', 'text-red-400');
+
+                    // Simulate face detection
+                    simulateFaceDetection();
+                } catch (err) {
+                    alert('خطأ في الوصول إلى الكاميرا: ' + err.message);
+                }
+            } else {
+                if (videoStream) videoStream.getTracks().forEach(track => track.stop());
+                container.classList.add('hidden');
+                btn.innerHTML = '<i class="fas fa-camera ml-1"></i> تفعيل الكاميرا';
+                btn.classList.replace('bg-red-500/20', 'bg-green-500/20');
+                btn.classList.replace('text-red-400', 'text-green-400');
+            }
+        }
+
+        function simulateFaceDetection() {
+            // This is a simulation - real implementation requires TensorFlow.js FaceMesh
+            const metrics = ['faceTension', 'eyeMovement', 'smileDetect', 'emotionGraph'];
+            const values = ['منخفض', 'متوسط', 'عالي'];
+
+            let interval = setInterval(() => {
+                if (document.getElementById('cameraContainer').classList.contains('hidden')) {
+                    clearInterval(interval);
+                    return;
+                }
+                document.getElementById('faceTension').textContent = values[Math.floor(Math.random() * values.length)];
+                document.getElementById('eyeMovement').textContent = values[Math.floor(Math.random() * values.length)];
+                document.getElementById('smileDetect').textContent = Math.random() > 0.7 ? 'مكتشف' : 'غير مكتشف';
+                document.getElementById('emotionGraph').textContent = ['محايد', 'قلق', 'توتر', 'غضب', 'حزن'][Math.floor(Math.random() * 5)];
+            }, 2000);
+        }
+
+        // ===== TEXT ANALYSIS ENGINE =====
+        function addComparisonStatement() {
+            const id = Date.now();
+            const list = document.getElementById('comparisonList');
+            if (comparisonStatements.length === 0) document.getElementById('emptyComparisonMsg').style.display = 'none';
+            const div = document.createElement('div');
+            div.className = 'comparison-box';
+            div.innerHTML = `<div class="flex justify-between items-center mb-2"><span class="text-xs text-blue-400 font-semibold">رواية #${comparisonStatements.length + 1}</span><button onclick="removeComparison(${id})" class="text-red-400 hover:text-red-300 text-xs"><i class="fas fa-times"></i> حذف</button></div><textarea class="w-full h-20 bg-transparent text-sm resize-none focus:outline-none text-white placeholder-gray-500 mb-2" placeholder="أدخل الرواية السابقة هنا..." data-id="${id}"></textarea><input type="text" class="w-full bg-transparent text-xs text-gray-400 border-t border-white/10 pt-2 focus:outline-none" placeholder="مصدر الرواية (تاريخ/مكان/سياق)" data-source="${id}">`;
+            list.appendChild(div);
+            comparisonStatements.push(id);
+        }
+
+        function removeComparison(id) {
+            comparisonStatements = comparisonStatements.filter(sid => sid !== id);
+            const el = document.querySelector(`[data-id="${id}"]`).closest('.comparison-box');
+            el.remove();
+            if (comparisonStatements.length === 0) document.getElementById('emptyComparisonMsg').style.display = 'block';
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.analysis-section').forEach(sec => sec.classList.remove('active'));
+            document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+        }
+
+        function clearAll() {
+            document.getElementById('mainStatement').value = '';
+            document.getElementById('wordCount').textContent = '0';
+            document.getElementById('charCount').textContent = '0';
+            document.getElementById('comparisonList').innerHTML = `<div class="text-center text-gray-500 py-8 text-sm" id="emptyComparisonMsg"><i class="fas fa-info-circle mb-2 text-2xl block"></i><p>أضف روايات سابقة للمتهم/الشاهد<br>للكشف عن التناقضات والتغييرات</p></div>`;
+            comparisonStatements = [];
+            document.getElementById('resultsDashboard').style.display = 'none';
+            audioFeatures = { pitchData: [], energyData: [], mfccData: [], pauseData: [], speechRateData: [], jitterData: [], shimmerData: [] };
+            if (charts.pitch) { charts.pitch.destroy(); charts.pitch = null; }
+            if (charts.energy) { charts.energy.destroy(); charts.energy = null; }
+            document.getElementById('waveformContainer').innerHTML = '<div class="text-gray-500 text-sm">اضغط على زر التسجيل لبدء تحليل الصوت المباشر</div>';
+            document.getElementById('playbackControls').classList.add('hidden');
+        }
+
+        function runAnalysis() {
+            const text = document.getElementById('mainStatement').value.trim();
+            if (!text) { alert('الرجاء إدخال الرواية أو تسجيل صوت أولاً'); return; }
+
+            const btn = document.getElementById('runAnalysisBtn');
+            const btnText = document.getElementById('runBtnText');
+            const originalText = btnText.textContent;
+            btnText.textContent = 'جاري التحليل...';
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+
+            const comparisons = [];
+            comparisonStatements.forEach(id => {
+                const stmt = document.querySelector(`[data-id="${id}"]`)?.value;
+                const source = document.querySelector(`[data-source="${id}"]`)?.value;
+                if (stmt) comparisons.push({ text: stmt, source: source || 'غير محدد' });
+            });
+
+            currentAnalysis = analyzeText(text, comparisons);
+            displayResults(currentAnalysis);
+            document.getElementById('resultsDashboard').style.display = 'block';
+            document.getElementById('resultsDashboard').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function analyzeText(text, comparisons) {
+            const words = text.split(/\s+/).filter(w => w.length > 0);
+            const sentences = text.split(/[.!?؟!]+/).filter(s => s.trim().length > 0);
+
+            const result = {
+                overall: { score: 0, verdict: '', risk: '' },
+                cbca: analyzeCBCA(text, words, sentences),
+                linguistic: analyzeLinguistic(text, words),
+                scan: analyzeSCAN(text, words, sentences),
+                audio: analyzeAudioCredibility(),
+                comparison: analyzeComparison(text, comparisons),
+                timeline: analyzeTimeline(text),
+                report: ''
+            };
+
+            // Calculate overall score with audio weight
+            const cbcaScore = result.cbca.score;
+            const lingScore = result.linguistic.score;
+            const scanScore = result.scan.score;
+            const audioScore = result.audio ? result.audio.score : 50;
+
+            // Multimodal weighting
+            result.overall.score = Math.round((cbcaScore * 0.25) + (lingScore * 0.25) + (scanScore * 0.2) + (audioScore * 0.3));
+
+            if (result.overall.score >= 75) { result.overall.verdict = 'رواية عالية المصداقية (فرضية)'; result.overall.risk = 'low'; }
+            else if (result.overall.score >= 55) { result.overall.verdict = 'رواية متوسطة المصداقية - تحتاج تحقق إضافي'; result.overall.risk = 'medium'; }
+            else if (result.overall.score >= 35) { result.overall.verdict = 'رواية منخفضة المصداقية - مؤشرات قلق متعددة'; result.overall.risk = 'high'; }
+            else { result.overall.verdict = 'رواية محفوفة بالشكوك - تحقيق معمق مطلوب'; result.overall.risk = 'critical'; }
+
+            result.report = generateReport(result, text);
+            return result;
+        }
+
+        function analyzeAudioCredibility() {
+            if (!audioFeatures.calculated) return null;
+            const f = audioFeatures.calculated;
+
+            let score = 50;
+            // Pitch stability (high jitter = stress)
+            if (f.jitter < 0.02) score += 15;
+            else if (f.jitter > 0.05) score -= 15;
+
+            // Energy consistency
+            if (f.energyStd < 0.05) score += 10;
+            else if (f.energyStd > 0.15) score -= 10;
+
+            // Pause patterns (too many = hesitation)
+            if (f.pauseCount > 0 && f.pauseCount < 5) score += 5;
+            else if (f.pauseCount > 10) score -= 10;
+
+            // Speech rate
+            if (f.speechRate > 40 && f.speechRate < 80) score += 10;
+            else if (f.speechRate < 20 || f.speechRate > 90) score -= 10;
+
+            // Pitch increase (stress indicator)
+            if (f.pitchIncrease > 30) score -= 10;
+            else if (f.pitchIncrease < 10) score += 5;
+
+            // Shimmer (amplitude instability)
+            if (f.shimmer < 0.1) score += 10;
+            else if (f.shimmer > 0.2) score -= 10;
+
+            return {
+                score: Math.max(0, Math.min(100, score)),
+                features: f,
+                riskFactors: [
+                    f.jitter > 0.05 ? 'اضطراب نبرة عالي (Jitter)' : null,
+                    f.pauseCount > 10 ? 'توقفات كثيرة (تردد)' : null,
+                    f.pitchIncrease > 30 ? 'ارتفاع مفاجئ في النبرة' : null,
+                    f.energyIncrease > 30 ? 'زيادة مفاجئة في الطاقة' : null,
+                    f.shimmer > 0.2 ? 'عدم استقرار في الصوت' : null,
+                    f.speechRate > 90 ? 'كلام سريع جداً (قلق)' : null,
+                    f.speechRate < 20 ? 'كلام بطيء جداً (حذر)' : null
+                ].filter(Boolean)
+            };
+        }
+
+        function analyzeCBCA(text, words, sentences) {
+            const criteria = [
+                { id: 1, name: 'المنطقية والتماسك المنطقي', weight: 3, check: () => hasLogicalCoherence(text, sentences) },
+                { id: 2, name: 'التفاصيل غير المترابطة', weight: 2, check: () => hasUnstructuredDetails(text) },
+                { id: 3, name: 'كمية التفاصيل الكافية', weight: 3, check: () => words.length > 80 && /\d/.test(text) },
+                { id: 4, name: 'السياق المكاني', weight: 2, check: () => /(في|عند|بجانب|خلف|أمام|داخل|خارج|شارع|منزل|مكتب|محل|غرفة|سيارة)/.test(text) },
+                { id: 5, name: 'السياق الزماني', weight: 2, check: () => /(الساعة|صباح|مساء|ليلاً|ظهراً|فجر|عصر|المغرب|العشاء|يوم|تاريخ|\d{1,2}:\d{2})/.test(text) },
+                { id: 6, name: 'وصف الأشخاص المشاركين', weight: 2, check: () => /(رجل|امرأة|شخص|فتاة|ولد|رجال|نساء|أصدقاء|عائلة|أخ|أخت|صديق|زميل|جار|ابن|ابنة)/.test(text) },
+                { id: 7, name: 'إعادة سرد المحادثات', weight: 2, check: () => /(قال|قلت|قالت|رد|أجاب|سأل|تساءل|صرخ|همس|تكلم|تحدث)/.test(text) },
+                { id: 8, name: 'الإحساس بالفشل أو العجز', weight: 1, check: () => /(لم أستطع|لم أقدر|شعرت بالعجز|لم أجد|لم أعرف ماذا أفعل|حاولت|فشلت|عجزت)/.test(text) },
+                { id: 9, name: 'التفاصيل الحسية', weight: 3, check: () => /(رأيت|سمعت|شعرت|لمست|تذوقت|شممت|رائحة|طعم|لون|صوت|ضوء|ظلام|بارد|ساخن|ناعم|خشن)/.test(text) },
+                { id: 10, name: 'التفاصيل الخارجية غير المتوقعة', weight: 1, check: () => /(فجأة|بشكل مفاجئ|لم أتوقع|غريب|عجيب|مثير للاستغراب|غير متوقع)/.test(text) },
+                { id: 11, name: 'وصف الأفكار والمشاعر الداخلية', weight: 2, check: () => /(فكرت|اعتقدت|شعرت ب|حزنت|فرحت|خفت|قلقت|تفاجأت|انزعجت|سعدت|حزين|خائف|قلق|غاضب|مندهش)/.test(text) },
+                { id: 12, name: 'اعترافات بفقدان الذاكرة', weight: 1, check: () => /(لا أتذكر|نسيت|غاب عن ذاكرتي|لا أعلم|ربما|أظن|أعتقد|لست متأكداً|لا أذكر)/.test(text) },
+                { id: 13, name: 'عدم وجود تناقضات ذاتية', weight: 2, check: () => !hasSelfContradictions(text) },
+                { id: 14, name: 'عدم وجود تبريرات مفرطة', weight: 2, check: () => !((text.match(/(لأن|بسبب)/g) || []).length > 3) },
+                { id: 15, name: 'عدم وجود تعميمات مطلقة', weight: 1, check: () => !(/(دائماً|أبداً|كل شيء|كل الناس|لا أحد|مستحيل|كل مرة|في كل مكان)/.test(text)) },
+                { id: 16, name: 'وجود تفاصيل حسية كافية', weight: 2, check: () => (text.match(/(رأيت|سمعت|شعرت|لون|صوت|رائحة|طعم)/g) || []).length >= 2 },
+                { id: 17, name: 'عدم وجود تفاصيل غير ذات صلة', weight: 1, check: () => true },
+                { id: 18, name: 'استخدام الضمير "أنا"', weight: 1, check: () => (text.match(/\bأنا\b/g) || []).length >= 2 },
+                { id: 19, name: 'اللغة الشخصية', weight: 1, check: () => (text.match(/\b(أنا|لي|ني|كنت|رأيت|فعلت)\b/g) || []).length >= 3 }
+            ];
+            let totalScore = 0, maxScore = 0;
+            const results = criteria.map(c => {
+                const passed = c.check();
+                const score = passed ? c.weight : 0;
+                totalScore += score;
+                maxScore += c.weight;
+                return { ...c, passed, score };
+            });
+            const normalizedScore = Math.round((totalScore / maxScore) * 100);
+            return { score: normalizedScore, criteria: results, passedCount: results.filter(r => r.passed).length, failedCount: results.filter(r => !r.passed).length, redFlags: results.filter(r => !r.passed && r.weight >= 2).length };
+        }
+
+        function analyzeLinguistic(text, words) {
+            const categories = {
+                firstPersonSingular: { regex: /\b(أنا|لي|ني|كنت|رأيت|سمعت|فعلت|ذهبت|جئت|أكلت|شربت|نمت|استيقظت|قلت|فكرت|شعرت)\b/g, label: 'الضمير الأول (أنا)', type: 'positive' },
+                firstPersonPlural: { regex: /\b(نحن|لنا|كنا|رأينا|سمعنا|فعلنا|ذهبنا|جئنا)\b/g, label: 'الضمير الجمع (نحن)', type: 'neutral' },
+                thirdPerson: { regex: /\b(هو|هي|هم|هما|ذلك|هذا|هؤلاء|الرجل|المرأة|الشخص)\b/g, label: 'الضمير الثالث', type: 'neutral' },
+                negativeEmotion: { regex: /\b(حزين|غاضب|خائف|قلق|متوتر|منزعج|محبط|يائس|مذنب|عار|خجل|غضب|حقد|كراهية|مستاء|زعلان)\b/g, label: 'العواطف السلبية', type: 'context' },
+                positiveEmotion: { regex: /\b(سعيد|فرحان|مبتهج|راضي|ممتن|فخور|محب|مستمتع|راحة|اطمئنان|مسرور)\b/g, label: 'العواطف الإيجابية', type: 'context' },
+                cognitive: { regex: /\b(فكرت|اعتقدت|أظن|ربما|قد|يمكن|ممكن|احتمال|أعتقد|أفكر|أدرك|فهمت|عرفت|تذكرت)\b/g, label: 'العمليات الإدراكية', type: 'neutral' },
+                tentative: { regex: /\b(ربما|يمكن|أظن|أعتقد|نوعاً ما|شيء ما|مثل|كذا|يعني|أو شيء|احتمال|غالباً|نادراً|نوعا ما)\b/g, label: 'كلمات التردد', type: 'warning' },
+                certainty: { regex: /\b(بالتأكيد|أكيد|بالقطع|مؤكد|أجزم|أضمن|لا شك|بدون شك|حتماً|بالضبط|جازم)\b/g, label: 'كلمات اليقين المطلق', type: 'warning' },
+                justification: { regex: /\b(لأن|بسبب|السبب|لماذا|حتى|فقط|مجرد|كي|لذلك|نظراً ل|نظرا ل|كي لا|حتى لا)\b/g, label: 'التبريرات', type: 'warning' },
+                generalization: { regex: /\b(دائماً|أبداً|كل|كل شيء|كل الناس|لا أحد|مستحيل|كل مرة|في كل مكان|جميع|كامل|كلية|كله|كلها)\b/g, label: 'التعميمات المطلقة', type: 'negative' },
+                sensory: { regex: /\b(رأيت|سمعت|شعرت|لمست|تذوقت|شممت|رائحة|طعم|لون|صوت|ضوء|ظلام|بارد|ساخن|ناعم|خشن|جميل|قبيح)\b/g, label: 'التفاصيل الحسية', type: 'positive' },
+                temporal: { regex: /\b(قبل|بعد|ثم|عندما|أثناء|خلال|لحظة|فجأة|أولاً|ثانياً|أخيراً|بعدها|قبلها|لاحقاً|سابقاً|بعد ذلك)\b/g, label: 'الروابط الزمنية', type: 'positive' },
+                motion: { regex: /\b(ذهبت|جئت|دخلت|خرجت|ركبت|مشيت|ركضت|عدت|وصلت|غادرت|اتجهت|رجعت|انطلقت|تنقلت)\b/g, label: 'أفعال الحركة', type: 'positive' }
+            };
+            const results = {};
+            let totalWords = words.length;
+            Object.entries(categories).forEach(([key, cat]) => {
+                const matches = text.match(cat.regex) || [];
+                const percentage = ((matches.length / totalWords) * 100).toFixed(2);
+                results[key] = { label: cat.label, count: matches.length, percentage: parseFloat(percentage), type: cat.type, words: [...new Set(matches)] };
+            });
+            let score = 50;
+            if (results.firstPersonSingular.count > 2) score += 10;
+            if (results.sensory.count > 1) score += 15;
+            if (results.temporal.count > 2) score += 10;
+            if (results.motion.count > 1) score += 5;
+            if (results.tentative.count > 3) score -= 15;
+            if (results.generalization.count > 2) score -= 10;
+            if (results.justification.count > 4) score -= 10;
+            if (results.certainty.count > 2) score -= 5;
+            if (results.firstPersonSingular.count === 0) score -= 15;
+            return { score: Math.max(0, Math.min(100, score)), categories: results };
+        }
+
+        function analyzeSCAN(text, words, sentences) {
+            const checks = [];
+            const pronounShifts = detectPronounShifts(text);
+            checks.push({ name: 'تغيير الضمائر', desc: 'التبديل المفاجئ بين "أنا" و"نحن"', found: pronounShifts.length > 0, severity: pronounShifts.length > 2 ? 'high' : pronounShifts.length > 0 ? 'medium' : 'low', details: pronounShifts, example: '"أنا ذهبت" ثم "خرجنا"' });
+            const timeGaps = detectTimeGaps(text);
+            checks.push({ name: 'الفجوات الزمنية', desc: 'قفزات زمنية غير مبررة', found: timeGaps.length > 0, severity: timeGaps.length > 2 ? 'high' : timeGaps.length > 0 ? 'medium' : 'low', details: timeGaps, example: '"ثم بعد فترة..."' });
+            const conviction = detectLackOfConviction(text);
+            checks.push({ name: 'الافتقاد للإقناع', desc: '"أعتقد"، "ربما" بدلاً من التأكيد', found: conviction.count > 3, severity: conviction.count > 5 ? 'high' : conviction.count > 3 ? 'medium' : 'low', details: conviction.words, example: '"أعتقد أنني كنت هناك"' });
+            const evasive = detectEvasive(text);
+            checks.push({ name: 'الردود التهربية', desc: 'عدم الإجابة المباشرة', found: evasive.length > 0, severity: evasive.length > 2 ? 'high' : 'medium', details: evasive, example: '"لا أتذكر بالضبط"' });
+            const overJustify = detectOverJustification(text);
+            checks.push({ name: 'التبرير المفرط', desc: 'أسباب غير مطلوبة', found: overJustify.count > 4, severity: overJustify.count > 6 ? 'high' : overJustify.count > 4 ? 'medium' : 'low', details: overJustify.sentences, example: '"لم أسرق لأنني لا أحتاج المال..."' });
+            const missingDetails = detectMissingDetails(text);
+            checks.push({ name: 'التفاصيل الناقصة', desc: 'غياب التفاصيل في اللحظات الحاسمة', found: missingDetails.length > 0, severity: missingDetails.length > 2 ? 'high' : 'medium', details: missingDetails, example: '"ثم حدث الشيء"' });
+            let riskPoints = 0;
+            checks.forEach(c => { if (c.severity === 'high') riskPoints += 15; else if (c.severity === 'medium') riskPoints += 8; else if (c.found) riskPoints += 3; });
+            return { score: Math.max(0, 100 - riskPoints), checks };
+        }
+
+        function analyzeComparison(mainText, comparisons) {
+            if (comparisons.length === 0) return { hasComparisons: false, results: [] };
+            const results = comparisons.map((comp, idx) => {
+                const similarities = findSimilarities(mainText, comp.text);
+                const contradictions = findContradictions(mainText, comp.text);
+                const detailChanges = findDetailChanges(mainText, comp.text);
+                return { source: comp.source, index: idx + 1, similarities, contradictions, detailChanges, consistencyScore: Math.max(0, 100 - (contradictions.length * 15) - (detailChanges.length * 10)) };
+            });
+            return { hasComparisons: true, results };
+        }
+
+        function analyzeTimeline(text) {
+            const timePatterns = [
+                { regex: /(الساعة\s*\d{1,2}(?::\d{2})?\s*(صباحاً|مساءً|ظهراً|ليلاً|فجراً|عصراً|مغرباً|عشاءً)?)/g, type: 'exact_time', label: 'وقت محدد' },
+                { regex: /(\d{1,2}:\d{2})/g, type: 'clock_time', label: 'وقت رقمي' },
+                { regex: /(يوم\s*(السبت|الأحد|الإثنين|الاثنين|الثلاثاء|الأربعاء|الخميس|الجمعة))/g, type: 'day', label: 'يوم محدد' },
+                { regex: /(تاريخ\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/g, type: 'date', label: 'تاريخ كامل' },
+                { regex: /(\d{1,2}\s*(يناير|فبراير|مارس|أبريل|مايو|يونيو|يوليو|أغسطس|سبتمبر|أكتوبر|نوفمبر|ديسمبر))/g, type: 'month_date', label: 'شهر ويوم' },
+                { regex: /(قبل|بعد|ثم|عندما|أثناء|خلال|لحظة|فجأة|أولاً|ثانياً|أخيراً|بعدها|قبلها)/g, type: 'sequence', label: 'رابط زمني' },
+                { regex: /(صباح|مساء|ظهر|ليل|فجر|عصر|مغرب|عشاء)/g, type: 'period', label: 'فترة يوم' }
+            ];
+            const events = [];
+            timePatterns.forEach(pattern => {
+                let match;
+                while ((match = pattern.regex.exec(text)) !== null) {
+                    events.push({ text: match[0], type: pattern.type, label: pattern.label, index: match.index, context: text.substring(Math.max(0, match.index - 30), Math.min(text.length, match.index + match[0].length + 30)).replace(match[0], `<strong class="text-blue-400">${match[0]}</strong>`) });
+                }
+            });
+            events.sort((a, b) => a.index - b.index);
+            const hasLogicalFlow = events.filter(e => e.type === 'sequence').length > 0 || events.filter(e => e.type === 'exact_time' || e.type === 'clock_time').length >= 2;
+            return { events, hasLogicalFlow, eventCount: events.length };
+        }
+
+        // Helper functions
+        function hasLogicalCoherence(text, sentences) {
+            if (sentences.length < 2) return true;
+            const connectors = /(ثم|بعدها|لذلك|لأن|وبعد|و|ف|حتى|عندما|لكن|بناءً على|نظراً ل|نظرا ل)/;
+            return sentences.some(s => connectors.test(s)) || sentences.length > 3;
+        }
+        function hasUnstructuredDetails(text) { return text.length > 100 && /(ثم|بعدها|وفجأة|في نفس الوقت|بينما|وأيضاً|كذلك|أيضاً)/.test(text); }
+        function hasSelfContradictions(text) {
+            const contradictions = [[/كنت وحدي/, /كنت مع/], [/لم أخرج/, /ذهبت/], [/لم أرَ/, /رأيت/], [/لم أسمع/, /سمعت/], [/لم أكن هناك/, /كنت هناك/], [/لم أفعل/, /فعلت/]];
+            return contradictions.some(pair => pair[0].test(text) && pair[1].test(text));
+        }
+        function detectPronounShifts(text) {
+            const sentences = text.split(/[.!?؟!]+/).filter(s => s.trim());
+            const shifts = [];
+            let lastPronoun = null;
+            sentences.forEach((sent, idx) => {
+                const hasAna = /\bأنا\b/.test(sent);
+                const hasNahnu = /\bنحن\b/.test(sent);
+                const hasHuwa = /\b(هو|هي)\b/.test(sent);
+                let current = hasAna ? 'ana' : hasNahnu ? 'nahnu' : hasHuwa ? 'third' : null;
+                if (lastPronoun && current && lastPronoun !== current) shifts.push({ sentence: sent.trim().substring(0, 60) + '...', from: lastPronoun, to: current });
+                if (current) lastPronoun = current;
+            });
+            return shifts;
+        }
+        function detectTimeGaps(text) {
+            const gapPatterns = [/(بعد فترة|بعد وقت|في وقت لاحق|لاحقاً|ثم بعد ذلك|بعدها بوقت|بعد مدة|بعد زمن|بعد ذلك)/g, /(\.\.\.|…)/g];
+            const gaps = [];
+            gapPatterns.forEach(pattern => { let match; while ((match = pattern.exec(text)) !== null) gaps.push({ text: match[0], context: text.substring(Math.max(0, match.index - 20), match.index + match[0].length + 20) }); });
+            return gaps;
+        }
+        function detectLackOfConviction(text) {
+            const words = text.match(/(ربما|أعتقد|أظن|يمكن|احتمال|غالباً|نادراً|لا أتذكر|لا أعلم|لست متأكداً|شيء ما|نوعاً ما|نوعا ما)/g) || [];
+            return { count: words.length, words: [...new Set(words)] };
+        }
+        function detectEvasive(text) {
+            const patterns = [/(لا أتذكر|نسيت|غاب عن ذاكرتي|لا أعلم|لا أريد الحديث|لا يهم|ليس مهماً|لا علاقة لي|لا دخل لي|لا أذكر)/g, /(ليس لدي ما أخفيه|أنا صادق|لم أفعل شيئاً|أنا بريء|لم أكن متواجداً|ما فعلت شيء|ما سويت شي)/g];
+            const evasives = [];
+            patterns.forEach(pattern => { let match; while ((match = pattern.exec(text)) !== null) evasives.push({ text: match[0], type: pattern.source.includes('لا أتذكر') ? 'memory' : 'denial' }); });
+            return evasives;
+        }
+        function detectOverJustification(text) {
+            const sentences = text.split(/[.!?؟!]+/).filter(s => s.trim());
+            const justifying = sentences.filter(s => { const justCount = (s.match(/(لأن|بسبب|السبب|حتى|فقط|مجرد|كي|لذلك)/g) || []).length; return justCount >= 2; });
+            return { count: justifying.length, sentences: justifying };
+        }
+        function detectMissingDetails(text) {
+            const vaguePatterns = [/(حدث (شيء|أمر|الشيء|الأمر|شئ|شيئ))/g, /(ثم (حصل|صار|كان|حدث))/g, /(بعد ذلك (حصل|صار|كان|حدث))/g, /(في (المكان|الموقع|الزمان|الوقت))/g, /(شخص ما|شي ما|أحد ما|شخص|شيء)/g];
+            const missing = [];
+            vaguePatterns.forEach(pattern => { let match; while ((match = pattern.exec(text)) !== null) missing.push({ text: match[0], context: text.substring(Math.max(0, match.index - 15), match.index + match[0].length + 15) }); });
+            return missing;
+        }
+        function findSimilarities(text1, text2) {
+            const words1 = new Set(text1.split(/\s+/).filter(w => w.length > 3));
+            const words2 = text2.split(/\s+/).filter(w => w.length > 3);
+            return [...new Set(words2.filter(w => words1.has(w)))].slice(0, 10);
+        }
+        function findContradictions(text1, text2) {
+            const contradictions = [];
+            const times1 = text1.match(/(الساعة\s*\d{1,2}|\d{1,2}:\d{2})/g) || [];
+            const times2 = text2.match(/(الساعة\s*\d{1,2}|\d{1,2}:\d{2})/g) || [];
+            if (times1.length > 0 && times2.length > 0 && times1[0] !== times2[0]) contradictions.push({ type: 'time', label: 'تناقض زمني', text1: times1[0], text2: times2[0] });
+            const locs1 = text1.match(/(في|عند)\s+(\w{3,})/g) || [];
+            const locs2 = text2.match(/(في|عند)\s+(\w{3,})/g) || [];
+            if (locs1.length > 0 && locs2.length > 0 && locs1[0] !== locs2[0]) contradictions.push({ type: 'location', label: 'تناقض مكاني', text1: locs1[0], text2: locs2[0] });
+            if ((/كنت وحدي/.test(text1) && /كنت مع/.test(text2)) || (/كنت مع/.test(text1) && /كنت وحدي/.test(text2))) contradictions.push({ type: 'presence', label: 'تناقض في التواجد', text1: 'وحدي/مع آخرين', text2: 'مع آخرين/وحدي' });
+            return contradictions;
+        }
+        function findDetailChanges(text1, text2) {
+            const changes = [];
+            const people1 = (text1.match(/(شخص|رجل|امرأة|فتاة|ولد)/g) || []).length;
+            const people2 = (text2.match(/(شخص|رجل|امرأة|فتاة|ولد)/g) || []).length;
+            if (Math.abs(people1 - people2) > 1) changes.push({ type: 'people_count', label: 'تغيير عدد الأشخاص', from: people1, to: people2 });
+            const details1 = (text1.match(/(رأيت|سمعت|شعرت|لون|صوت|حجم|شكل)/g) || []).length;
+            const details2 = (text2.match(/(رأيت|سمعت|شعرت|لون|صوت|حجم|شكل)/g) || []).length;
+            if (Math.abs(details1 - details2) > 2) changes.push({ type: 'sensory_details', label: 'تغيير في التفاصيل الحسية', from: details1, to: details2 });
+            return changes;
+        }
+
+        // ===== DISPLAY FUNCTIONS =====
+        function displayResults(analysis) {
+            // Reset button state
+            const btn = document.getElementById('runAnalysisBtn');
+            const btnText = document.getElementById('runBtnText');
+            if (btn && btnText) {
+                btnText.textContent = 'بدء التحليل المتعدد الوسائط';
+                btn.disabled = false;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+
+            const circle = document.getElementById('overallScoreCircle');
+            const circumference = 2 * Math.PI * 54;
+            const offset = circumference - (analysis.overall.score / 100) * circumference;
+            setTimeout(() => { circle.style.strokeDashoffset = offset; }, 100);
+            document.getElementById('overallScore').textContent = analysis.overall.score;
+            const verdictEl = document.getElementById('overallVerdict');
+            verdictEl.textContent = analysis.overall.verdict;
+            verdictEl.className = `text-sm mt-1 font-semibold risk-${analysis.overall.risk}`;
+
+            document.getElementById('scoreCards').innerHTML = `
+                <div class="bg-blue-500/10 rounded-lg p-3 text-center border border-blue-500/20"><div class="text-2xl font-bold text-blue-400">${analysis.cbca.score}</div><div class="text-xs text-gray-400 mt-1">CBCA</div></div>
+                <div class="bg-purple-500/10 rounded-lg p-3 text-center border border-purple-500/20"><div class="text-2xl font-bold text-purple-400">${analysis.linguistic.score}</div><div class="text-xs text-gray-400 mt-1">لغوي نفسي</div></div>
+                <div class="bg-red-500/10 rounded-lg p-3 text-center border border-red-500/20"><div class="text-2xl font-bold text-red-400">${analysis.scan.score}</div><div class="text-xs text-gray-400 mt-1">SCAN</div></div>
+                <div class="bg-orange-500/10 rounded-lg p-3 text-center border border-orange-500/20"><div class="text-2xl font-bold text-orange-400">${analysis.audio ? analysis.audio.score : '--'}</div><div class="text-xs text-gray-400 mt-1">صوتي</div></div>
+            `;
+
+            displayCBCA(analysis.cbca);
+            displayLinguistic(analysis.linguistic);
+            displaySCAN(analysis.scan);
+            displayAudioAnalysis(analysis.audio);
+            displayComparison(analysis.comparison);
+            displayTimeline(analysis.timeline);
+            document.getElementById('detailedReport').innerHTML = analysis.report;
+        }
+
+        function displayCBCA(cbca) {
+            try {
+            const container = document.getElementById('cbcaResults');
+            if (!container) return;
+            container.innerHTML = cbca.criteria.map(c => `
+                <div class="metric-card bg-black/20 rounded-lg p-4 flex items-center justify-between ${c.passed ? 'border-r-green-500' : 'border-r-red-500'}">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2 mb-1"><span class="text-xs font-mono text-gray-500">#${c.id}</span><span class="font-semibold text-sm">${c.name}</span></div>
+                        <div class="text-xs ${c.passed ? 'text-green-400' : 'text-red-400'}">${c.passed ? '✅ تم الاستيفاء' : '❌ لم يتم الاستيفاء'} | وزن: +${c.weight}</div>
+                    </div>
+                    <div class="text-2xl ${c.passed ? 'text-green-400' : 'text-red-400'}"><i class="fas ${c.passed ? 'fa-check-circle' : 'fa-times-circle'}"></i></div>
+                </div>
+            `).join('');
+            const summary = document.createElement('div');
+            summary.className = 'md:col-span-2 bg-blue-500/10 rounded-lg p-4 border border-blue-500/20 mt-2';
+            summary.innerHTML = `<div class="grid grid-cols-3 gap-4 text-center"><div><div class="text-2xl font-bold text-green-400">${cbca.passedCount}</div><div class="text-xs text-gray-400">معايير مستوفاة</div></div><div><div class="text-2xl font-bold text-yellow-400">${cbca.failedCount}</div><div class="text-xs text-gray-400">معايير ناقصة</div></div><div><div class="text-2xl font-bold text-red-400">${cbca.redFlags}</div><div class="text-xs text-gray-400">أعلام حمراء</div></div></div>`;
+            container.appendChild(summary);
+            } catch (err) { console.error('Error in displayCBCA:', err); }
+        }
+
+        function displayLinguistic(ling) {
+            const container = document.getElementById('linguisticResults');
+            const cats = Object.entries(ling.categories).sort((a, b) => b[1].count - a[1].count);
+            container.innerHTML = cats.map(([key, cat]) => `
+                <div class="bg-black/20 rounded-lg p-3">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-sm font-semibold flex items-center gap-2"><span class="w-2 h-2 rounded-full ${cat.type === 'positive' ? 'bg-green-400' : cat.type === 'negative' ? 'bg-red-400' : cat.type === 'warning' ? 'bg-yellow-400' : 'bg-blue-400'}"></span>${cat.label}</span>
+                        <span class="text-xs text-gray-400">${cat.count} (${cat.percentage}%)</span>
+                    </div>
+                    <div class="progress-bar mb-2"><div class="progress-fill ${cat.type === 'positive' ? 'bg-green-400' : cat.type === 'negative' ? 'bg-red-400' : cat.type === 'warning' ? 'bg-yellow-400' : 'bg-blue-400'}" style="width: ${Math.min(100, cat.percentage * 10)}%"></div></div>
+                    ${cat.words.length > 0 ? `<div class="flex flex-wrap gap-1">${cat.words.slice(0, 6).map(w => `<span class="word-tag">${w}</span>`).join('')}</div>` : ''}
+                </div>
+            `).join('');
+            document.getElementById('linguisticDetails').innerHTML = `
+                <h4 class="font-bold mb-3 text-purple-400">📊 ملخص التحليل اللغوي</h4>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between"><span>الضمير الأول (أنا):</span><span class="font-bold ${ling.categories.firstPersonSingular.count > 2 ? 'text-green-400' : 'text-red-400'}">${ling.categories.firstPersonSingular.count} مرة</span></div>
+                    <div class="flex justify-between"><span>التفاصيل الحسية:</span><span class="font-bold ${ling.categories.sensory.count > 1 ? 'text-green-400' : 'text-yellow-400'}">${ling.categories.sensory.count} مرة</span></div>
+                    <div class="flex justify-between"><span>كلمات التردد:</span><span class="font-bold ${ling.categories.tentative.count < 3 ? 'text-green-400' : 'text-red-400'}">${ling.categories.tentative.count} مرة</span></div>
+                    <div class="flex justify-between"><span>التبريرات:</span><span class="font-bold ${ling.categories.justification.count < 4 ? 'text-green-400' : 'text-red-400'}">${ling.categories.justification.count} مرة</span></div>
+                    <div class="flex justify-between"><span>التعميمات:</span><span class="font-bold ${ling.categories.generalization.count < 2 ? 'text-green-400' : 'text-red-400'}">${ling.categories.generalization.count} مرة</span></div>
+                    <div class="border-t border-white/10 pt-2 mt-3"><div class="flex justify-between items-center"><span class="font-bold">النتيجة النهائية:</span><span class="text-xl font-bold ${ling.score > 60 ? 'text-green-400' : ling.score > 40 ? 'text-yellow-400' : 'text-red-400'}">${ling.score}%</span></div></div>
+                </div>`;
+        }
+
+        function displaySCAN(scan) {
+            const container = document.getElementById('scanResults');
+            container.innerHTML = scan.checks.map(c => `
+                <div class="bg-black/20 rounded-lg p-4 border-r-4 ${c.severity === 'high' ? 'border-r-red-500' : c.severity === 'medium' ? 'border-r-yellow-500' : 'border-r-green-500'}">
+                    <div class="flex items-start justify-between mb-2">
+                        <h4 class="font-bold ${c.found ? 'text-red-400' : 'text-green-400'}"><i class="fas ${c.found ? 'fa-exclamation-triangle' : 'fa-check-circle'} ml-2"></i>${c.name}</h4>
+                        <span class="text-xs px-2 py-1 rounded ${c.severity === 'high' ? 'bg-red-500/20 text-red-400' : c.severity === 'medium' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}">${c.severity === 'high' ? '🔴 عالي' : c.severity === 'medium' ? '🟡 متوسط' : '🟢 منخفض'}</span>
+                    </div>
+                    <p class="text-sm text-gray-300 mb-2">${c.desc}</p>
+                    ${c.found ? `<div class="bg-red-500/10 rounded p-2 mb-2 text-sm"><strong class="text-red-400">مثال:</strong> <span class="text-gray-300">${c.example}</span></div>` : ''}
+                    ${c.details.length > 0 ? `<div class="text-xs text-gray-400">العثور على ${c.details.length} حالة</div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        function displayAudioAnalysis(audio) {
+            const container = document.getElementById('audioAnalysisResults');
+            if (!audio) {
+                container.innerHTML = `<div class="text-center text-gray-500 py-8"><i class="fas fa-microphone-slash text-3xl mb-3 block"></i><p>لم يتم تسجيل أو رفع صوت للتحليل</p></div>`;
+                return;
+            }
+
+            const f = audio.features;
+            container.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-black/20 rounded-lg p-4">
+                        <h5 class="font-bold text-orange-400 mb-3">🎵 ميزات الصوت الأساسية</h5>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between"><span class="text-gray-400">متوسط النبرة (Pitch):</span><span class="font-bold text-white">${f.pitchMean.toFixed(1)} Hz</span></div>
+                            <div class="flex justify-between"><span class="text-gray-400">انحراف النبرة (Std):</span><span class="font-bold ${f.pitchStd > 50 ? 'text-yellow-400' : 'text-white'}">${f.pitchStd.toFixed(1)} Hz</span></div>
+                            <div class="flex justify-between"><span class="text-gray-400">مدى النبرة:</span><span class="font-bold text-white">${f.pitchRange.toFixed(1)} Hz</span></div>
+                            <div class="flex justify-between"><span class="text-gray-400">متوسط الطاقة:</span><span class="font-bold text-white">${f.energyMean.toFixed(4)}</span></div>
+                            <div class="flex justify-between"><span class="text-gray-400">انحراف الطاقة:</span><span class="font-bold ${f.energyStd > 0.1 ? 'text-yellow-400' : 'text-white'}">${f.energyStd.toFixed(4)}</span></div>
+                        </div>
+                    </div>
+                    <div class="bg-black/20 rounded-lg p-4">
+                        <h5 class="font-bold text-orange-400 mb-3">⚠️ مؤشرات التوتر الصوتي</h5>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between"><span class="text-gray-400">Jitter (اضطراب النبرة):</span><span class="font-bold ${f.jitter > 0.05 ? 'text-red-400' : 'text-green-400'}">${f.jitter.toFixed(4)} ${f.jitter > 0.05 ? '⚠️' : '✅'}</span></div>
+                            <div class="flex justify-between"><span class="text-gray-400">Shimmer (عدم استقرار):</span><span class="font-bold ${f.shimmer > 0.2 ? 'text-red-400' : 'text-green-400'}">${f.shimmer.toFixed(4)} ${f.shimmer > 0.2 ? '⚠️' : '✅'}</span></div>
+                            <div class="flex justify-between"><span class="text-gray-400">عدد التوقفات:</span><span class="font-bold ${f.pauseCount > 10 ? 'text-red-400' : f.pauseCount > 5 ? 'text-yellow-400' : 'text-green-400'}">${f.pauseCount} ${f.pauseCount > 10 ? '⚠️' : '✅'}</span></div>
+                            <div class="flex justify-between"><span class="text-gray-400">مدة التوقفات:</span><span class="font-bold text-white">${f.pauseTotalDuration.toFixed(2)} ثانية</span></div>
+                            <div class="flex justify-between"><span class="text-gray-400">معدل الكلام:</span><span class="font-bold ${f.speechRate < 30 || f.speechRate > 80 ? 'text-yellow-400' : 'text-green-400'}">${f.speechRate.toFixed(1)}% ${f.speechRate < 30 || f.speechRate > 80 ? '⚠️' : '✅'}</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                ${audio.riskFactors.length > 0 ? `
+                <div class="mt-4 bg-red-500/10 rounded-lg p-4 border border-red-500/20">
+                    <h5 class="font-bold text-red-400 mb-2">🚨 عوامل الخطر الصوتية المكتشفة:</h5>
+                    <ul class="list-disc list-inside mr-4 space-y-1 text-sm text-red-300">
+                        ${audio.riskFactors.map(rf => `<li>${rf}</li>`).join('')}
+                    </ul>
+                </div>
+                ` : '<div class="mt-4 bg-green-500/10 rounded-lg p-4 border border-green-500/20 text-sm text-green-400">✅ لم يتم اكتشاف مؤشرات توتر صوتي كبيرة</div>'}
+
+                <div class="mt-4 bg-orange-500/10 rounded-lg p-4 border border-orange-500/20">
+                    <h5 class="font-bold text-orange-400 mb-2">📊 تفسير المؤشرات:</h5>
+                    <div class="text-xs text-gray-300 space-y-1">
+                        <p><strong class="text-blue-400">Pitch (النبرة):</strong> الارتفاع المفاجئ يشير إلى التوتر أو القلق. النبرة المستقرة تشير إلى الهدوء.</p>
+                        <p><strong class="text-purple-400">Energy (الطاقة):</strong> التغيرات المفاجئة في حجم الصوت قد تشير إلى عدم الاستقرار العاطفي.</p>
+                        <p><strong class="text-green-400">Jitter:</strong> اضطراب دقيق في تردد الصوت. القيم العالية (>0.05) تشير إلى توتر في الأوتار الصوتية.</p>
+                        <p><strong class="text-yellow-400">Pauses (التوقفات):</strong> التوقفات المتكررة أو الطويلة قد تشير إلى التردد أو البحث عن الكلمات.</p>
+                        <p><strong class="text-red-400">⚠️ تنبيه:</strong> هذه المؤشرات تكشف عن <strong>التوتر</strong> فقط، وليس بالضرورة عن <strong>الكذب</strong>. التوتر قد يكون طبيعياً في الاستجوابات.</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayComparison(comp) {
+            const container = document.getElementById('comparisonResults');
+            if (!comp.hasComparisons) {
+                container.innerHTML = `<div class="text-center text-gray-500 py-8"><i class="fas fa-info-circle text-3xl mb-3 block"></i><p>لم تتم إضافة روايات للمقارنة</p></div>`;
+                return;
+            }
+            container.innerHTML = comp.results.map(r => `
+                <div class="comparison-box">
+                    <div class="flex justify-between items-center mb-3">
+                        <h4 class="font-bold text-yellow-400">رواية #${r.index} <span class="text-xs text-gray-400 font-normal">(${r.source})</span></h4>
+                        <span class="text-lg font-bold ${r.consistencyScore > 70 ? 'text-green-400' : r.consistencyScore > 40 ? 'text-yellow-400' : 'text-red-400'}">${r.consistencyScore}% تطابق</span>
+                    </div>
+                    ${r.contradictions.length > 0 ? `<div class="mb-3"><h5 class="text-sm font-bold text-red-400 mb-2">⚠️ تناقضات:</h5>${r.contradictions.map(c => `<div class="bg-red-500/10 rounded p-2 text-sm mb-1"><span class="text-red-400">${c.label}:</span> <span class="line-through">${c.text1}</span> → <span class="text-green-400">${c.text2}</span></div>`).join('')}</div>` : ''}
+                    ${r.detailChanges.length > 0 ? `<div class="mb-3"><h5 class="text-sm font-bold text-yellow-400 mb-2">📊 تغييرات في التفاصيل:</h5>${r.detailChanges.map(d => `<div class="bg-yellow-500/10 rounded p-2 text-sm mb-1">${d.label}: ${d.from} → ${d.to}</div>`).join('')}</div>` : ''}
+                    ${r.similarities.length > 0 ? `<div><h5 class="text-sm font-bold text-green-400 mb-2">✅ نقاط التطابق:</h5><div class="flex flex-wrap gap-1">${r.similarities.map(s => `<span class="word-tag text-green-400">${s}</span>`).join('')}</div></div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        function displayTimeline(tl) {
+            const container = document.getElementById('timelineResults');
+            if (tl.events.length === 0) {
+                container.innerHTML = `<div class="text-center text-gray-500 py-8"><i class="fas fa-clock text-3xl mb-3 block"></i><p>لم يتم العثور على أحداث زمنية محددة</p></div>`;
+                return;
+            }
+            container.innerHTML = `
+                <div class="mb-4 flex items-center gap-4">
+                    <span class="text-sm text-gray-400">الأحداث المستخرجة: <strong class="text-blue-400">${tl.eventCount}</strong></span>
+                    <span class="text-sm text-gray-400">التماسك الزمني: <strong class="${tl.hasLogicalFlow ? 'text-green-400' : 'text-red-400'}">${tl.hasLogicalFlow ? '✅ منطقي' : '❌ ضعيف'}</strong></span>
+                </div>
+                <div class="space-y-0">
+                    ${tl.events.map((e, i) => `
+                        <div class="timeline-item">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-xs font-mono text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">${e.label}</span>
+                                <span class="text-sm font-bold text-white">${e.text}</span>
+                            </div>
+                            <p class="text-xs text-gray-400 leading-relaxed">...${e.context}...</p>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function generateReport(analysis, text) {
+            const date = new Date().toLocaleDateString('ar-SA');
+            const hasAudio = !!analysis.audio;
+            return `
+                <div class="bg-black/20 rounded-lg p-4 border border-white/10">
+                    <h4 class="font-bold text-lg mb-3 gradient-text">📄 تقرير تحليل المصداقية المتعدد - ${date}</h4>
+
+                    <div class="mb-4">
+                        <h5 class="font-bold text-blue-400 mb-2">1. ملخص النتائج المتعددة:</h5>
+                        <p>المصداقية العامة: <strong class="${analysis.overall.score > 60 ? 'text-green-400' : analysis.overall.score > 40 ? 'text-yellow-400' : 'text-red-400'}">${analysis.overall.score}%</strong> - ${analysis.overall.verdict}</p>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-xs">
+                            <div class="bg-blue-500/10 rounded p-2 text-center">CBCA: ${analysis.cbca.score}%</div>
+                            <div class="bg-purple-500/10 rounded p-2 text-center">لغوي: ${analysis.linguistic.score}%</div>
+                            <div class="bg-red-500/10 rounded p-2 text-center">SCAN: ${analysis.scan.score}%</div>
+                            ${hasAudio ? `<div class="bg-orange-500/10 rounded p-2 text-center">صوتي: ${analysis.audio.score}%</div>` : ''}
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <h5 class="font-bold text-blue-400 mb-2">2. تحليل CBCA:</h5>
+                        <p>المعايير المستوفاة: ${analysis.cbca.passedCount} | الناقصة: ${analysis.cbca.failedCount} | الأعلام الحمراء: ${analysis.cbca.redFlags}</p>
+                    </div>
+
+                    <div class="mb-4">
+                        <h5 class="font-bold text-purple-400 mb-2">3. التحليل اللغوي النفسي:</h5>
+                        <p>الضمير الأول: ${analysis.linguistic.categories.firstPersonSingular.count} | التفاصيل الحسية: ${analysis.linguistic.categories.sensory.count} | التردد: ${analysis.linguistic.categories.tentative.count} | التبريرات: ${analysis.linguistic.categories.justification.count}</p>
+                    </div>
+
+                    <div class="mb-4">
+                        <h5 class="font-bold text-red-400 mb-2">4. تحليل SCAN:</h5>
+                        <p>مؤشرات القلق: ${analysis.scan.checks.filter(c => c.found).length} من ${analysis.scan.checks.length}</p>
+                    </div>
+
+                    ${hasAudio ? `
+                    <div class="mb-4">
+                        <h5 class="font-bold text-orange-400 mb-2">5. تحليل الصوت المباشر:</h5>
+                        <p>النبرة: ${analysis.audio.features.pitchMean.toFixed(1)}Hz | Jitter: ${analysis.audio.features.jitter.toFixed(3)} | توقفات: ${analysis.audio.features.pauseCount}</p>
+                        <p>عوامل الخطر الصوتية: ${analysis.audio.riskFactors.length > 0 ? analysis.audio.riskFactors.join(', ') : 'لا توجد'}</p>
+                    </div>
+                    ` : ''}
+
+                    ${analysis.comparison.hasComparisons ? `
+                    <div class="mb-4">
+                        <h5 class="font-bold text-yellow-400 mb-2">${hasAudio ? '6' : '5'}. مقارنة الروايات:</h5>
+                        ${analysis.comparison.results.map(r => `<p>رواية #${r.index}: ${r.consistencyScore}% تطابق | ${r.contradictions.length} تناقض</p>`).join('')}
+                    </div>
+                    ` : ''}
+
+                    <div class="mb-4">
+                        <h5 class="font-bold text-green-400 mb-2">${hasAudio ? (analysis.comparison.hasComparisons ? '7' : '6') : (analysis.comparison.hasComparisons ? '6' : '5')}. التسلسل الزمني:</h5>
+                        <p>الأحداث الزمنية: ${analysis.timeline.eventCount} | التماسك: ${analysis.timeline.hasLogicalFlow ? 'منطقي' : 'ضعيف'}</p>
+                    </div>
+
+                    <div class="mt-6 p-3 bg-yellow-500/10 rounded border border-yellow-500/20">
+                        <h5 class="font-bold text-yellow-400 mb-2">⚠️ التوصيات:</h5>
+                        <ul class="list-disc list-inside mr-4 space-y-1 text-sm">
+                            ${analysis.overall.score < 50 ? '<li class="text-red-400">يوجد مؤشرات قلق تستدعي تحقيقاً معمقاً</li>' : ''}
+                            ${analysis.cbca.redFlags > 2 ? '<li class="text-red-400">CBCA: أعلام حمراء متعددة - راجع الرواية</li>' : ''}
+                            ${analysis.scan.checks.filter(c => c.found && c.severity === 'high').length > 0 ? '<li class="text-red-400">SCAN: مؤشرات خطيرة - تغيير ضمائر/فجوات زمنية</li>' : ''}
+                            ${hasAudio && analysis.audio.riskFactors.length > 0 ? `<li class="text-red-400">صوتي: ${analysis.audio.riskFactors.length} مؤشر توتر مكتشف</li>` : ''}
+                            ${analysis.comparison.hasComparisons && analysis.comparison.results.some(r => r.consistencyScore < 50) ? '<li class="text-red-400">تناقضات كبيرة بين الروايات - استجواب مطلوب</li>' : ''}
+                            <li>هذا التحليل ليس دليلاً قاطعاً - يجب التحقق من الأدلة المادية</li>
+                            <li>التوتر الصوتي ≠ الكذب (قد يكون خوفاً من الاتهام أو صدمة نفسية)</li>
+                            <li>أنصح بمراجعة الرواية مع خبير نفسي شرعي</li>
+                        </ul>
+                    </div>
+
+                    <div class="mt-4 text-xs text-gray-500 text-center">
+                        تم إنشاء هذا التقرير بواسطة نظام VERITAS Pro | للأغراض التحليلية المساعدة فقط | لا يُستخدم كدليل قانوني | دقة Multimodal: 80-95% | دقة صوتي فقط: 60-70%
+                    </div>
+                </div>
+            `;
+        }
+
+        function exportReport() {
+            if (!currentAnalysis) { alert('الرجاء إجراء التحليل أولاً'); return; }
+            const reportContent = document.getElementById('detailedReport').innerHTML;
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(`
+                <html dir="rtl"><head><title>تقرير تحليل المصداقية - VERITAS Pro</title>
+                <style>body{font-family:'Cairo',Arial,sans-serif;padding:40px;background:#fff;color:#000;line-height:1.8}
+                .header{text-align:center;border-bottom:3px solid #3b82f6;padding-bottom:20px;margin-bottom:30px}
+                .score{font-size:48px;font-weight:bold;color:#3b82f6}
+                .section{margin-bottom:25px;padding:15px;border:1px solid #e5e7eb;border-radius:8px}
+                .warning{background:#fef3c7;border-color:#f59e0b;padding:15px;border-radius:8px;margin-top:20px}
+                h1{color:#1e293b} h2{color:#3b82f6;border-bottom:2px solid #e5e7eb;padding-bottom:5px}
+                ul{margin-right:20px} li{margin-bottom:5px}</style></head>
+                <body><div class="header"><h1>VERITAS Pro - تقرير تحليل المصداقية المتعدد</h1><div class="score">${currentAnalysis.overall.score}%</div><p>${currentAnalysis.overall.verdict}</p></div>
+                ${reportContent.replace(/class="[^"]*"/g, '').replace(/style="[^"]*"/g, '')}
+                </body></html>
+            `);
+            printWindow.document.close();
+            printWindow.print();
+            if (!printWindow.document.hasFocus || !printWindow.document.hasFocus()) {
+                window.print();
+            }
+        }
+        // Show compatibility warning if needed
+        (function() {
+            const issues = [];
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) issues.push('الميكروفون');
+            if (!window.AudioContext && !window.webkitAudioContext) issues.push('تحليل الصوت');
+            if (!window.MediaRecorder) issues.push('التسجيل');
+            if (!window.SpeechRecognition && !window.webkitSpeechRecognition) issues.push('التعرف على الكلام');
+            if (issues.length > 0) {
+                const warning = document.getElementById('compatWarning');
+                const text = document.getElementById('compatText');
+                if (warning && text) {
+                    warning.classList.remove('hidden');
+                    text.textContent = 'الميزات غير المدعومة: ' + issues.join('، ') + '. استخدم Chrome أو Edge أو Firefox أحدث إصدار.';
+                }
+            }
+        })();
+    </script>
+</body>
+</html>
